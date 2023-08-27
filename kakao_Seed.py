@@ -17,31 +17,18 @@ def Pooling(src, z = (2, 2), ad = np.max):
         
 @numba.jit(nopython = True, cache= False)
 def Conv_f(x, ws, hs, k, bias):
-    mas = np.zeros((hs,ws,len(k)), dtype=np.double)
-    news = np.zeros((len(x), hs,ws,len(k)), dtype=np.double)
-    base = np.zeros((hs,ws), dtype=np.double)
-    
+    mas = np.zeros((hs, ws, len(k)), dtype=np.double)
+    news = np.zeros((len(x), hs, ws, len(k)), dtype=np.double)
+
     for s in range(len(x)):
-        mas *= 0
         for ks in range(len(k)):
-            base *= 0
             for h in range(hs):
                 for w in range(ws):
-                    # print(h,w)
-                    # print(h+len(k[1]))
-                    # print(w+len(k[2]))
-                    # print( x[s, h:h+len(k[1]), w:w+len(k[2])])
-                    post = x[s, h:h+len(k[1]), w:w+len(k[2])]*k[ks]
-                    # print(post.shape)
-
-                    fast = np.sum(post, axis= 0)
-                    just = np.sum(fast, axis= 1)
-                    base[h,w] = np.sum(just)
-            for yy in range(hs):
-                for xx in range(ws):
-                    mas[yy,xx][ks] = base[yy,xx] + bias[ks]
+                    post = x[s, h:h + k[0], w:w + k[1]] * k[ks]
+                    mas[h, w, ks] = np.sum(post)
         news[s] = mas
     return news
+
 
 @numba.jit(nopython = True)
 def T_trejers(img, k, le):
@@ -74,9 +61,23 @@ def T_trejers(img, k, le):
                     f[index, i, j, npc] = np.sum(Ap*asia)*le
         
     return f
+def Convd_b(dout, x, ws, hs, k, bias):
+    dx = np.zeros_like(x)
+    dw = np.zeros_like(k)
+    db = np.zeros_like(bias)
 
+    for s in range(len(dout)):
+        for ks in range(len(k)):
+            for h in range(hs):
+                for w in range(ws):
+                    # 출력 채널에 대해 반복
+                    dx[s, h:h + k[0], w:w + k[1], :] += dout[s, h, w, ks] * k[ks]
+                    # 입력 채널에 대해 합산
+                    dw[ks] += np.sum(dout[s, h, w, ks] * x[s, h:h + k[0], w:w + k[1], :], axis=(0, 1))
+                    db[ks] += dout[s, h, w, ks]
+    return dx, dw, db
 @numba.jit(nopython = True, cache= False)
-def     Conv_b(x, ws, hs, k, Nk, db, out):
+def  Conv_b(x, ws, hs, k, Nk, db, out):
     for s in range(len(x)):
         for ks in range(len(k)):
             for h in range(hs):
